@@ -166,28 +166,22 @@ SOFTWARE.
                     <CardContent class="space-y-6">
                         <div class="grid gap-4 md:grid-cols-2">
                             <div class="space-y-2">
-                                <Label for="cf-email">{{ t('adminSubdomains.cloudflareEmail') }}</Label>
+                                <Label for="bunny-key">{{ t('adminSubdomains.bunnyKey') }}</Label>
                                 <Input
-                                    id="cf-email"
-                                    v-model="settings.cloudflare_email"
-                                    placeholder="you@example.com"
+                                    id="bunny-key"
+                                    v-model="settings.bunny_api_key"
+                                    :placeholder="
+                                        settingsState.bunny_api_key_set
+                                            ? t('adminSubdomains.secretPlaceholder')
+                                            : t('adminSubdomains.bunnyKeyPlaceholder')
+                                    "
                                 />
                             </div>
                             <div class="space-y-2">
-                                <Label for="cf-key">{{ t('adminSubdomains.cloudflareKey') }}</Label>
-                                <Input
-                                    id="cf-key"
-                                    v-model="settings.cloudflare_api_key"
-                                    :placeholder="
-                                        settingsState.cloudflare_api_key_set
-                                            ? t('adminSubdomains.secretPlaceholder')
-                                            : t('adminSubdomains.cloudflareKeyPlaceholder')
-                                    "
-                                />
-                                <p v-if="settingsState.cloudflare_api_key_set" class="text-xs text-muted-foreground">
+                                <p v-if="settingsState.bunny_api_key_set" class="text-xs text-muted-foreground">
                                     {{ t('adminSubdomains.secretMaskedMessage') }}
                                 </p>
-                                <p class="text-xs text-muted-foreground">{{ t('adminSubdomains.cloudflareHint') }}</p>
+                                <p class="text-xs text-muted-foreground">{{ t('adminSubdomains.bunnyHint') }}</p>
                             </div>
                             <div class="space-y-2">
                                 <Label for="max-per-server">{{ t('adminSubdomains.maxPerServer') }}</Label>
@@ -254,17 +248,6 @@ SOFTWARE.
                         :placeholder="t('adminSubdomains.descriptionPlaceholder')"
                     />
                 </div>
-                <div class="grid gap-3">
-                    <Label for="account-id">{{ t('adminSubdomains.accountIdLabel') }}</Label>
-                    <Input
-                        id="account-id"
-                        v-model="domainForm.cloudflare_account_id"
-                        :placeholder="t('adminSubdomains.accountIdPlaceholder')"
-                    />
-                    <p class="text-xs text-muted-foreground">
-                        {{ t('adminSubdomains.accountIdHint') }}
-                    </p>
-                </div>
                 <div class="grid gap-4 md:grid-cols-2">
                     <div class="grid gap-2">
                         <Label>{{ t('adminSubdomains.activeToggle') }}</Label>
@@ -303,51 +286,6 @@ SOFTWARE.
                                 @change="domainForm.is_active = !domainForm.is_active"
                             />
                         </label>
-                    </div>
-                    <div class="grid gap-2">
-                        <Label>{{ t('adminSubdomains.zoneLabel') }}</Label>
-                        <label
-                            class="flex cursor-pointer items-center gap-3 rounded-lg border border-input bg-background px-3 py-2 transition hover:border-primary/60"
-                        >
-                            <span
-                                class="flex h-4 w-4 items-center justify-center rounded border transition"
-                                :class="
-                                    zoneOverrideEnabled
-                                        ? 'border-primary bg-primary text-primary-foreground'
-                                        : 'border-muted-foreground/40 bg-transparent'
-                                "
-                            >
-                                <svg
-                                    v-if="zoneOverrideEnabled"
-                                    xmlns="http://www.w3.org/2000/svg"
-                                    class="h-3 w-3"
-                                    viewBox="0 0 20 20"
-                                    fill="currentColor"
-                                >
-                                    <path
-                                        fill-rule="evenodd"
-                                        d="M16.704 5.29a1 1 0 0 1 0 1.414l-7.428 7.428a1 1 0 0 1-1.414 0L3.296 9.567a1 1 0 1 1 1.414-1.414l3.152 3.152 6.72-6.72a1 1 0 0 1 1.422 0z"
-                                        clip-rule="evenodd"
-                                    />
-                                </svg>
-                            </span>
-                            <span class="flex-1 text-sm text-muted-foreground">
-                                {{ t('adminSubdomains.zoneToggleLabel') }}
-                            </span>
-                            <input
-                                class="hidden"
-                                type="checkbox"
-                                :checked="zoneOverrideEnabled"
-                                @change="toggleZoneOverride"
-                            />
-                        </label>
-                        <Input
-                            v-if="zoneOverrideEnabled"
-                            id="zone-id"
-                            v-model="domainForm.cloudflare_zone_id"
-                            placeholder="optional"
-                            class="transition"
-                        />
                     </div>
                 </div>
                 <Separator />
@@ -557,8 +495,7 @@ interface DomainFormSpell {
 }
 
 interface SubdomainSettingsForm {
-    cloudflare_email: string;
-    cloudflare_api_key: string;
+    bunny_api_key: string;
     max_subdomains_per_server: number;
 }
 
@@ -639,8 +576,6 @@ const domainForm = reactive({
     domain: '',
     description: '',
     is_active: true,
-    cloudflare_zone_id: '',
-    cloudflare_account_id: '',
     spells: [] as DomainFormSpell[],
 });
 
@@ -659,16 +594,14 @@ const detailsDialog = reactive({
 });
 
 const settings = reactive<SubdomainSettingsForm>({
-    cloudflare_email: '',
-    cloudflare_api_key: '',
+    bunny_api_key: '',
     max_subdomains_per_server: 1,
 });
 const settingsState = reactive({
-    cloudflare_api_key_set: false,
+    bunny_api_key_set: false,
 });
 
 const protocolOptions = ['tcp', 'udp', 'tls'] as const;
-const zoneOverrideEnabled = ref(false);
 
 function formatDate(value: string): string {
     const date = new Date(value);
@@ -684,8 +617,6 @@ function resetDomainForm(): void {
     domainForm.domain = '';
     domainForm.description = '';
     domainForm.is_active = true;
-    domainForm.cloudflare_zone_id = '';
-    domainForm.cloudflare_account_id = '';
     domainForm.spells = [];
     zoneOverrideEnabled.value = false;
 }
@@ -789,10 +720,9 @@ async function loadDomains(): Promise<void> {
 async function loadSettings(): Promise<void> {
     try {
         const data = await fetchAdminSubdomainSettings();
-        settings.cloudflare_email = data.cloudflare_email || '';
         settings.max_subdomains_per_server = Number(data.max_subdomains_per_server) || 1;
-        settings.cloudflare_api_key = '';
-        settingsState.cloudflare_api_key_set = Boolean(data.cloudflare_api_key_set);
+        settings.bunny_api_key = '';
+        settingsState.bunny_api_key_set = Boolean(data.bunny_api_key_set);
     } catch {
         toast.error(t('adminSubdomains.settingsLoadFailed'));
     }
@@ -839,9 +769,6 @@ async function openEditDialog(uuid: string): Promise<void> {
         domainForm.domain = domain.domain;
         domainForm.description = domain.description ?? '';
         domainForm.is_active = Number(domain.is_active) === 1;
-        domainForm.cloudflare_zone_id = domain.cloudflare_zone_id ?? '';
-        domainForm.cloudflare_account_id = domain.cloudflare_account_id ?? '';
-        zoneOverrideEnabled.value = Boolean(domain.cloudflare_zone_id);
         domainForm.spells = domain.spells.map((mapping) => ({
             spell_id: mapping.spell_id,
             protocol_service: mapping.protocol_service ?? '',
@@ -873,12 +800,6 @@ async function submitDomain(): Promise<void> {
         return;
     }
 
-    if (!domainForm.cloudflare_account_id.trim()) {
-        toast.error(t('adminSubdomains.accountIdRequired'));
-
-        return;
-    }
-
     if (domainForm.spells.length === 0 || domainForm.spells.some((mapping) => mapping.spell_id === null)) {
         toast.error(t('adminSubdomains.spellRequired'));
 
@@ -887,10 +808,8 @@ async function submitDomain(): Promise<void> {
 
     const payload: SubdomainDomainPayload = {
         domain: domainForm.domain.trim(),
-        cloudflare_account_id: domainForm.cloudflare_account_id.trim(),
         description: domainForm.description.trim() || undefined,
         is_active: domainForm.is_active,
-        cloudflare_zone_id: zoneOverrideEnabled.value ? domainForm.cloudflare_zone_id.trim() || undefined : undefined,
         spells: domainForm.spells.map((mapping) => ({
             spell_id: mapping.spell_id as number,
             protocol_service: mapping.protocol_service.trim() ? mapping.protocol_service.trim() : null,
@@ -949,14 +868,13 @@ async function saveSettings(): Promise<void> {
     savingSettings.value = true;
     try {
         const payload: SubdomainSettingsPayload = {
-            cloudflare_email: settings.cloudflare_email.trim(),
             max_subdomains_per_server: settings.max_subdomains_per_server,
         };
 
-        const apiKey = settings.cloudflare_api_key.trim();
+        const apiKey = settings.bunny_api_key.trim();
 
         if (apiKey !== '') {
-            payload.cloudflare_api_key = apiKey;
+            payload.bunny_api_key = apiKey;
         }
 
         await updateAdminSubdomainSettings(payload);
@@ -969,6 +887,7 @@ async function saveSettings(): Promise<void> {
     }
 }
 
+
 onMounted(async () => {
     await Promise.all([loadSpells(), loadSettings()]);
     if (domainForm.spells.length === 0 && availableSpells.value.length > 0) {
@@ -977,13 +896,6 @@ onMounted(async () => {
     await fetchPluginWidgets();
     void loadDomains();
 });
-
-function toggleZoneOverride(): void {
-    zoneOverrideEnabled.value = !zoneOverrideEnabled.value;
-    if (!zoneOverrideEnabled.value) {
-        domainForm.cloudflare_zone_id = '';
-    }
-}
 
 function normalizeProtocolType(value: string | null | undefined): string {
     if (!value) {

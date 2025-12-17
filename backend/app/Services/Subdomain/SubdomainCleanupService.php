@@ -59,7 +59,7 @@ class SubdomainCleanupService
                 continue;
             }
 
-            $service = CloudflareSubdomainService::fromConfig($accountId);
+            $service = BunnySubdomainService::fromConfig($accountId);
 
             if ($service->isAvailable() && !empty($domain['cloudflare_zone_id'])) {
                 $zoneId = $domain['cloudflare_zone_id'];

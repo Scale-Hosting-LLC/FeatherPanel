@@ -103,14 +103,12 @@ export interface SubdomainOverview {
 }
 
 export interface SubdomainSettings {
-    cloudflare_email: string;
     max_subdomains_per_server: number;
-    cloudflare_api_key_set: boolean;
+    bunny_api_key_set: boolean;
 }
 
 export interface SubdomainSettingsPayload {
-    cloudflare_email?: string;
-    cloudflare_api_key?: string;
+    bunny_api_key?: string;
     max_subdomains_per_server?: number;
 }
 

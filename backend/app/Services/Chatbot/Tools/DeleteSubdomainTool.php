@@ -39,7 +39,7 @@ use App\Chat\ServerActivity;
 use App\Chat\SubdomainDomain;
 use App\Helpers\ServerGateway;
 use App\Plugins\Events\Events\SubdomainsEvent;
-use App\Services\Subdomain\CloudflareSubdomainService;
+use App\Services\Subdomain\BunnySubdomainService;
 
 /**
  * Tool to delete a subdomain for a server.
@@ -146,7 +146,7 @@ class DeleteSubdomainTool implements ToolInterface
         // Delete from Cloudflare
         $accountId = trim((string) ($domain['cloudflare_account_id'] ?? ''));
         if ($accountId !== '') {
-            $service = CloudflareSubdomainService::fromConfig($accountId);
+            $service = BunnySubdomainService::fromConfig($accountId);
             $zoneId = $domain['cloudflare_zone_id'] ?? null;
             if ($service->isAvailable() && $zoneId) {
                 $recordId = $subdomain['cloudflare_record_id'] ?? null;

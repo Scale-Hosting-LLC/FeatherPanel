@@ -44,7 +44,7 @@ use App\CloudFlare\CloudFlareRealIP;
 use Symfony\Component\HttpFoundation\Request;
 use App\Plugins\Events\Events\SubdomainsEvent;
 use Symfony\Component\HttpFoundation\Response;
-use App\Services\Subdomain\CloudflareSubdomainService;
+use App\Services\Subdomain\BunnySubdomainService;
 
 #[OA\Schema(
     schema: 'ServerSubdomainAvailableDomain',
@@ -223,23 +223,18 @@ class SubdomainController
             return ApiResponse::error('Server primary allocation not found', 'PRIMARY_ALLOCATION_NOT_FOUND', Response::HTTP_BAD_REQUEST);
         }
 
-        $accountId = trim((string) ($domain['cloudflare_account_id'] ?? ''));
-        if ($accountId === '') {
-            return ApiResponse::error('Domain is missing a Cloudflare account ID', 'CLOUDFLARE_ACCOUNT_ID_MISSING', Response::HTTP_BAD_REQUEST);
-        }
-
-        $service = CloudflareSubdomainService::fromConfig($accountId);
+        $service = BunnySubdomainService::fromConfig();
         if (!$service->isAvailable()) {
-            return ApiResponse::error('Cloudflare integration is not configured', 'CLOUDFLARE_NOT_CONFIGURED', Response::HTTP_BAD_REQUEST);
+            return ApiResponse::error('Bunny DNS integration is not configured', 'BUNNY_NOT_CONFIGURED', Response::HTTP_BAD_REQUEST);
         }
 
-        $zoneId = $domain['cloudflare_zone_id'] ?? null;
+        $zoneId = $domain['dns_zone_id'] ?? null;
         if (!$zoneId) {
             $zoneId = $service->resolveZoneId($domain['domain']);
             if (!$zoneId) {
-                return ApiResponse::error('Failed to resolve Cloudflare zone for domain', 'CLOUDFLARE_ZONE_ERROR', Response::HTTP_BAD_REQUEST);
+                return ApiResponse::error('Failed to resolve DNS zone for domain', 'DNS_ZONE_ERROR', Response::HTTP_BAD_REQUEST);
             }
-            SubdomainDomain::updateCloudflareZoneId((int) $domain['id'], $zoneId);
+            SubdomainDomain::updateDnsZoneId((int) $domain['id'], $zoneId);
         }
 
         $protocolService = $mapping['protocol_service'] ?? null;
@@ -247,7 +242,7 @@ class SubdomainController
 
         // If ip_alias is not set, use the node public ipv4; else use ip_alias or fallback to allocation ip
         if (!empty($allocation['ip_alias'])) {
-            // Just use those assuming it exists in cloudflare already!
+            // Just use those assuming it exists in the DNS provider already!
             $target = $allocation['ip_alias'];
         } elseif (!empty($allocation['node_id'])) {
             $node = Node::getNodeById((int) $allocation['node_id']);
@@ -290,7 +285,7 @@ class SubdomainController
                 }
                 $addressRecordId = $service->createAddressRecord($zoneId, $fqdn, $target, $ipVersion, $ttl);
                 if (!$addressRecordId) {
-                    return ApiResponse::error('Failed to create address record for SRV target', 'CLOUDFLARE_ADDRESS_CREATE_FAILED', Response::HTTP_BAD_REQUEST);
+                    return ApiResponse::error('Failed to create address record for SRV target', 'DNS_ADDRESS_CREATE_FAILED', Response::HTTP_BAD_REQUEST);
                 }
                 $srvTarget = $fqdn;
             }
@@ -310,7 +305,7 @@ class SubdomainController
         }
 
         if (!$recordId) {
-            return ApiResponse::error('Failed to create DNS record on Cloudflare', 'CLOUDFLARE_CREATE_FAILED', Response::HTTP_BAD_REQUEST);
+            return ApiResponse::error('Failed to create DNS record', 'DNS_CREATE_FAILED', Response::HTTP_BAD_REQUEST);
         }
 
         $subdomainId = Subdomain::create([
@@ -320,7 +315,7 @@ class SubdomainController
             'subdomain' => $label,
             'record_type' => $recordType,
             'port' => $recordType === 'SRV' ? $port : null,
-            'cloudflare_record_id' => $recordId,
+            'dns_record_id' => $recordId,
         ]);
 
         if ($subdomainId === false) {
@@ -397,15 +392,10 @@ class SubdomainController
             return ApiResponse::error('Domain not found', 'DOMAIN_NOT_FOUND', Response::HTTP_NOT_FOUND);
         }
 
-        $accountId = trim((string) ($domain['cloudflare_account_id'] ?? ''));
-        if ($accountId === '') {
-            return ApiResponse::error('Domain is missing a Cloudflare account ID', 'CLOUDFLARE_ACCOUNT_ID_MISSING', Response::HTTP_BAD_REQUEST);
-        }
-
-        $service = CloudflareSubdomainService::fromConfig($accountId);
-        $zoneId = $domain['cloudflare_zone_id'] ?? null;
+        $service = BunnySubdomainService::fromConfig();
+        $zoneId = $domain['dns_zone_id'] ?? null;
         if ($service->isAvailable() && $zoneId) {
-            $recordId = $subdomain['cloudflare_record_id'] ?? null;
+            $recordId = $subdomain['dns_record_id'] ?? null;
             if ($recordId) {
                 $service->deleteRecord($zoneId, $recordId);
             } else {

@@ -116,6 +116,7 @@ interface ConfigInterface
      */
     public const SUBDOMAIN_CF_EMAIL = 'subdomain_cf_email';
     public const SUBDOMAIN_CF_API_KEY = 'subdomain_cf_api_key';
+    public const SUBDOMAIN_BUNNY_API_KEY = 'subdomain_bunny_api_key';
     public const SUBDOMAIN_MAX_PER_SERVER = 'subdomain_max_per_server';
 
     /**

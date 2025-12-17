@@ -40,7 +40,7 @@ use App\Chat\SubdomainDomain;
 use App\Helpers\ServerGateway;
 use App\Config\ConfigInterface;
 use App\Plugins\Events\Events\SubdomainsEvent;
-use App\Services\Subdomain\CloudflareSubdomainService;
+use App\Services\Subdomain\BunnySubdomainService;
 
 /**
  * Tool to create a subdomain for a server.
@@ -196,16 +196,16 @@ class CreateSubdomainTool implements ToolInterface
         if ($accountId === '') {
             return [
                 'success' => false,
-                'error' => 'Domain is missing a Cloudflare account ID',
+                'error' => 'Domain is missing a DNS provider account ID',
                 'action_type' => 'create_subdomain',
             ];
         }
 
-        $service = CloudflareSubdomainService::fromConfig($accountId);
+        $service = BunnySubdomainService::fromConfig($accountId);
         if (!$service->isAvailable()) {
             return [
                 'success' => false,
-                'error' => 'Cloudflare integration is not configured',
+                'error' => 'Bunny DNS integration is not configured',
                 'action_type' => 'create_subdomain',
             ];
         }
@@ -217,7 +217,7 @@ class CreateSubdomainTool implements ToolInterface
             if (!$zoneId) {
                 return [
                     'success' => false,
-                    'error' => 'Failed to resolve Cloudflare zone for domain',
+                    'error' => 'Failed to resolve DNS zone for domain',
                     'action_type' => 'create_subdomain',
                 ];
             }

@@ -42,7 +42,7 @@ use App\CloudFlare\CloudFlareRealIP;
 use Symfony\Component\HttpFoundation\Request;
 use App\Plugins\Events\Events\SubdomainsEvent;
 use Symfony\Component\HttpFoundation\Response;
-use App\Services\Subdomain\CloudflareSubdomainService;
+use App\Services\Subdomain\BunnySubdomainService;
 
 #[OA\Schema(
     schema: 'SubdomainManagerSpellMapping',
@@ -74,8 +74,7 @@ use App\Services\Subdomain\CloudflareSubdomainService;
         new OA\Property(property: 'domain', type: 'string'),
         new OA\Property(property: 'description', type: 'string', nullable: true),
         new OA\Property(property: 'is_active', type: 'integer'),
-        new OA\Property(property: 'cloudflare_zone_id', type: 'string', nullable: true),
-        new OA\Property(property: 'cloudflare_account_id', type: 'string', nullable: true),
+        new OA\Property(property: 'dns_zone_id', type: 'string', nullable: true),
         new OA\Property(property: 'subdomain_count', type: 'integer'),
         new OA\Property(property: 'spells', type: 'array', items: new OA\Items(ref: '#/components/schemas/SubdomainManagerSpellMapping')),
         new OA\Property(property: 'created_at', type: 'string'),
@@ -92,7 +91,7 @@ use App\Services\Subdomain\CloudflareSubdomainService;
         new OA\Property(property: 'port', type: 'integer', nullable: true),
         new OA\Property(property: 'server_id', type: 'integer'),
         new OA\Property(property: 'spell_id', type: 'integer'),
-        new OA\Property(property: 'cloudflare_record_id', type: 'string', nullable: true),
+        new OA\Property(property: 'dns_record_id', type: 'string', nullable: true),
         new OA\Property(property: 'created_at', type: 'string'),
     ]
 )]
@@ -247,22 +246,20 @@ class SubdomainsController
             content: new OA\JsonContent(
                 type: 'object',
                 required: ['domain'],
-                properties: [
-                    new OA\Property(property: 'domain', type: 'string'),
-                    new OA\Property(property: 'description', type: 'string', nullable: true),
-                    new OA\Property(property: 'is_active', type: 'boolean'),
-                    new OA\Property(property: 'cloudflare_zone_id', type: 'string', nullable: true),
-                    new OA\Property(property: 'cloudflare_account_id', type: 'string'),
-                    new OA\Property(property: 'spells', type: 'array', items: new OA\Items(type: 'object', properties: [
-                        new OA\Property(property: 'spell_id', type: 'integer'),
-                        new OA\Property(property: 'protocol_service', type: 'string', nullable: true),
-                        new OA\Property(property: 'protocol_type', type: 'string', enum: ['tcp', 'udp', 'tls']),
-                        new OA\Property(property: 'priority', type: 'integer'),
-                        new OA\Property(property: 'weight', type: 'integer'),
-                        new OA\Property(property: 'ttl', type: 'integer'),
-                    ])),
-                ]
-            )
+                                 properties: [
+                                    new OA\Property(property: 'domain', type: 'string'),
+                                    new OA\Property(property: 'description', type: 'string', nullable: true),
+                                    new OA\Property(property: 'is_active', type: 'boolean'),
+                                    new OA\Property(property: 'dns_zone_id', type: 'string', nullable: true),
+                                    new OA\Property(property: 'spells', type: 'array', items: new OA\Items(type: 'object', properties: [
+                                        new OA\Property(property: 'spell_id', type: 'integer'),
+                                        new OA\Property(property: 'protocol_service', type: 'string', nullable: true),
+                                        new OA\Property(property: 'protocol_type', type: 'string', enum: ['tcp', 'udp', 'tls']),
+                                        new OA\Property(property: 'priority', type: 'integer'),
+                                        new OA\Property(property: 'weight', type: 'integer'),
+                                        new OA\Property(property: 'ttl', type: 'integer'),
+                                    ])),
+                                ]            )
         ),
         responses: [
             new OA\Response(response: 201, description: 'Domain created successfully'),
@@ -288,13 +285,13 @@ class SubdomainsController
         }
 
         $domain = SubdomainDomain::getDomainById($domainId);
-        if ($domain && empty($domain['cloudflare_zone_id'])) {
-            $service = CloudflareSubdomainService::fromConfig($domain['cloudflare_account_id'] ?? null);
+        if ($domain) {
+            $service = BunnySubdomainService::fromConfig();
             if ($service->isAvailable()) {
                 $zoneId = $service->resolveZoneId($domain['domain']);
                 if ($zoneId) {
-                    SubdomainDomain::updateCloudflareZoneId($domainId, $zoneId);
-                    $domain['cloudflare_zone_id'] = $zoneId;
+                    SubdomainDomain::updateDnsZoneId($domainId, $zoneId);
+                    $domain['dns_zone_id'] = $zoneId;
                 }
             }
         }
@@ -454,12 +451,11 @@ class SubdomainsController
         }
 
         $config = App::getInstance(true)->getConfig();
-        $storedApiKey = trim((string) $config->getSetting(ConfigInterface::SUBDOMAIN_CF_API_KEY, ''));
+        $storedApiKey = trim((string) $config->getSetting(ConfigInterface::SUBDOMAIN_BUNNY_API_KEY, ''));
 
         return ApiResponse::success([
             'settings' => [
-                'cloudflare_email' => $config->getSetting(ConfigInterface::SUBDOMAIN_CF_EMAIL, ''),
-                'cloudflare_api_key_set' => $storedApiKey !== '',
+                'bunny_api_key_set' => $storedApiKey !== '',
                 'max_subdomains_per_server' => (int) $config->getSetting(ConfigInterface::SUBDOMAIN_MAX_PER_SERVER, '1'),
             ],
         ], 'Settings fetched successfully');
@@ -533,32 +529,23 @@ class SubdomainsController
 
         $config = App::getInstance(true)->getConfig();
 
-        $currentEmail = trim((string) $config->getSetting(ConfigInterface::SUBDOMAIN_CF_EMAIL, ''));
-        $currentApiKey = trim((string) $config->getSetting(ConfigInterface::SUBDOMAIN_CF_API_KEY, ''));
+        $currentApiKey = trim((string) $config->getSetting(ConfigInterface::SUBDOMAIN_BUNNY_API_KEY, ''));
         $currentMax = (int) $config->getSetting(ConfigInterface::SUBDOMAIN_MAX_PER_SERVER, '1');
-
-        $emailProvided = array_key_exists('cloudflare_email', $payload);
-        $apiKeyProvided = array_key_exists('cloudflare_api_key', $payload);
+        $apiKeyProvided = array_key_exists('bunny_api_key', $payload);
         $maxProvided = array_key_exists('max_subdomains_per_server', $payload);
-
-        $email = $emailProvided ? trim((string) $payload['cloudflare_email']) : $currentEmail;
-        $apiKey = $apiKeyProvided ? trim((string) $payload['cloudflare_api_key']) : $currentApiKey;
+        $apiKey = $apiKeyProvided ? trim((string) $payload['bunny_api_key']) : $currentApiKey;
         $max = $maxProvided ? (int) $payload['max_subdomains_per_server'] : $currentMax;
 
         if ($maxProvided && $max < 1) {
             return ApiResponse::error('Max subdomains per server must be at least 1', 'VALIDATION_FAILED', Response::HTTP_BAD_REQUEST);
         }
 
-        if ($email === '' || $apiKey === '') {
-            return ApiResponse::error('Cloudflare email and global API key are required', 'VALIDATION_FAILED', Response::HTTP_BAD_REQUEST);
-        }
-
-        if ($emailProvided) {
-            $config->setSetting(ConfigInterface::SUBDOMAIN_CF_EMAIL, $email);
+        if ($apiKey === '') {
+            return ApiResponse::error('Bunny DNS API key is required', 'VALIDATION_FAILED', Response::HTTP_BAD_REQUEST);
         }
 
         if ($apiKeyProvided) {
-            $config->setSetting(ConfigInterface::SUBDOMAIN_CF_API_KEY, $apiKey);
+            $config->setSetting(ConfigInterface::SUBDOMAIN_BUNNY_API_KEY, $apiKey);
         }
 
         if ($maxProvided) {
@@ -574,8 +561,7 @@ class SubdomainsController
                 SubdomainsEvent::onSubdomainSettingsUpdated(),
                 [
                     'settings' => [
-                        'cloudflare_email' => $email,
-                        'cloudflare_api_key_set' => $apiKey !== '',
+                        'bunny_api_key_set' => $apiKey !== '',
                         'max_subdomains_per_server' => $max,
                     ],
                     'updated_by' => $request->get('user'),
@@ -592,13 +578,6 @@ class SubdomainsController
             $domain = trim((string) ($payload['domain'] ?? ''));
             if ($domain === '' || filter_var($domain, FILTER_VALIDATE_DOMAIN, FILTER_FLAG_HOSTNAME) === false) {
                 return 'Domain must be a valid hostname';
-            }
-        }
-
-        if (!$isUpdate || array_key_exists('cloudflare_account_id', $payload)) {
-            $accountId = trim((string) ($payload['cloudflare_account_id'] ?? ''));
-            if ($accountId === '') {
-                return 'Cloudflare account ID is required';
             }
         }
 
